@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+backend/uploads/
+mcp_server/charts/
+models/
+frontend/node_modules/
+frontend/dist/
+logs/
+.vscode/
+.idea/
+*.whl
+*.gz
