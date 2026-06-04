@@ -4,13 +4,14 @@ from pathlib import Path
 class MCPSettings(BaseSettings):
     db_host    : str = "localhost"
     db_port    : int = 5432
-    db_name    : str = "project_db"
-    db_user    : str = "admin"
-    db_password: str = "admin1234"
+    db_name    : str = "aiagent"
+    db_user    : str = "postgres"
+    db_password: str = "1234"
     embed_model_path    : str  = "models/bge-m3"
     reranker_model_path : str  = "models/bge-reranker-v2-m3"
     use_fp16            : bool = True
     retrieve_top_k: int = 5
+    rerank_top_n  : int = 3
     mcp_port   : int = 8889
     chart_dir  : str = "../charts"
     backend_url: str = "http://localhost:8888"
