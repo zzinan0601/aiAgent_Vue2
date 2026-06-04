@@ -103,7 +103,7 @@ project-root/
               → [generate_answer] 툴별 전용 프롬프트로 LLM 답변 생성
                   → [evaluate] 품질 평가
                       → OK  -> 종료
-                      → 부족 -> [refine] 재시도 (최대 2회)
+                      → 부족 -> [refine] 답변 보완 후 재시도 (최대 2회)
 ```
 
 ---
@@ -175,6 +175,8 @@ MCP_URL=http://localhost:8889/sse
 UPLOAD_DIR=./uploads
 ```
 
+*참고: `CHUNK_SIZE`, `CHUNK_OVERLAP`, `RETRIEVE_TOP_K`, `RERANK_TOP_N`은 서비스 초기 구동 시 데이터베이스(`rag_settings` 테이블)에 삽입되는 최초 설정값으로만 사용됩니다. 이후에는 **문서 관리 메뉴의 RAG 설정 화면에서 동적으로 조율하고 DB에서 로드**하여 적용하므로 실시간 변경이 가능합니다.*
+
 ---
 
 ## API 목록
@@ -184,13 +186,17 @@ UPLOAD_DIR=./uploads
 | POST | /api/chat/ | 채팅 SSE 스트리밍 |
 | GET | /api/session/ | 세션 목록 |
 | POST | /api/session/ | 새 세션 |
+| PATCH | /api/session/{id} | 세션 설정 업데이트 (페르소나, 퓨샷, 온감 설정) |
 | GET | /api/session/{id}/messages | 대화 내용 |
+| GET | /api/session/{id}/context | 실시간 대화 컨텍스트 전체 조회 |
 | DELETE | /api/session/{id} | 세션 삭제 |
 | POST | /api/rag/upload | 파일 업로드 + 임베딩 |
 | GET | /api/rag/list | 문서 목록 |
 | GET | /api/rag/status/{id} | 임베딩 상태 |
 | GET | /api/rag/{id}/chunks | 청크 내용 |
 | DELETE | /api/rag/{id} | 문서 삭제 |
+| GET | /api/rag/settings | 글로벌 RAG 설정 조회 |
+| PUT | /api/rag/settings | 글로벌 RAG 설정 수정 |
 | GET | /api/tools/ | 툴 목록 (@ 자동완성) |
 | GET | /charts/{filename} | 차트 이미지 |
 

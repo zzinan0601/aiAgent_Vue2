@@ -10,7 +10,7 @@
 
     <!-- @ 툴 자동완성 -->
     <div v-if="showToolMenu" class="tool-menu">
-      <div class="tool-menu-title">🔧 툴 선택</div>
+      <div class="tool-menu-title">도구 선택</div>
       <div
         v-for="t in filteredTools" :key="t.name"
         class="tool-menu-item"
@@ -19,7 +19,7 @@
         <span class="tool-name">@{{ t.name }}</span>
         <span class="tool-desc">{{ t.description }}</span>
       </div>
-      <div v-if="!filteredTools.length" class="tool-empty">일치하는 툴 없음</div>
+      <div v-if="!filteredTools.length" class="tool-empty">일치하는 도구 없음</div>
     </div>
 
     <!-- 입력창 -->
@@ -36,11 +36,11 @@
         ref="textarea"
       />
       <button class="send-btn" @click="send" :disabled="disabled || !text.trim()">
-        {{ disabled ? '⏳' : '전송 ▶' }}
+        {{ disabled ? '대기' : '전송' }}
       </button>
     </div>
 
-    <div class="hint">💡 <code>@툴이름</code> 으로 특정 툴을 바로 호출할 수 있습니다</div>
+    <div class="hint"><code>@도구이름</code> 형식을 입력하면 특정 도구를 지정하여 실행할 수 있습니다.</div>
   </div>
 </template>
 
@@ -56,18 +56,18 @@ export default {
     showToolMenu: false,
     atQuery     : '',
     modeOptions : [
-      { value: 'auto', label: '🤖 자동' },
-      { value: 'chat', label: '💬 일반대화' },
-      { value: 'tool', label: '🔧 툴 사용' }
+      { value: 'auto', label: '자동' },
+      { value: 'chat', label: '대화' },
+      { value: 'tool', label: '도구 실행' }
     ]
   }),
   computed: {
     ...mapState('chat', ['tools']),
     placeholder() {
       return {
-        auto: '메시지 입력... (@툴이름 으로 툴 직접 호출)',
-        chat: '일반 대화 모드 — LLM 직접 응답',
-        tool: '툴 사용 모드 — @툴이름 또는 자동 선택'
+        auto: '메시지를 입력하세요... (@도구이름 형식으로 직접 호출 가능)',
+        chat: '대화 모드 — 인공지능이 직접 답변합니다.',
+        tool: '도구 실행 모드 — 도구 명칭을 자동 혹은 수동으로 지정합니다.'
       }[this.mode]
     },
     filteredTools() {
@@ -124,26 +124,26 @@ export default {
 </script>
 
 <style scoped>
-.input-wrap { background: #fff; border-top: 1px solid #e2e8f0; flex-shrink: 0; position: relative; }
-.mode-bar { display: flex; gap: 6px; padding: 8px 20px 0; }
-.mode-opt { padding: 4px 14px; border-radius: 14px; font-size: 12px; cursor: pointer; border: 1.5px solid #d1d9e6; color: #666; user-select: none; transition: all .15s; }
-.mode-opt:hover  { border-color: #3b82f6; color: #3b82f6; }
-.mode-opt.active { background: #3b82f6; border-color: #3b82f6; color: #fff; }
-.tool-menu { position: absolute; bottom: 100%; left: 20px; right: 20px; background: #fff; border: 1.5px solid #e2e8f0; border-radius: 12px; box-shadow: 0 -8px 24px rgba(0,0,0,.1); overflow: hidden; z-index: 100; margin-bottom: 4px; }
-.tool-menu-title { padding: 8px 14px; font-size: 11px; color: #94a3b8; background: #f8fafc; border-bottom: 1px solid #f0f4f8; font-weight: 600; }
+.input-wrap { background: #ffffff; border-top: 1px solid #e2e8f0; flex-shrink: 0; position: relative; box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.015); }
+.mode-bar { display: flex; gap: 6px; padding: 10px 24px 0; }
+.mode-opt { padding: 5px 15px; border-radius: 20px; font-size: 12px; cursor: pointer; border: 1px solid #e2e8f0; color: #64748b; background: #ffffff; user-select: none; transition: all .15s ease; font-weight: 500; }
+.mode-opt:hover  { border-color: #cbd5e1; color: #334155; }
+.mode-opt.active { background: rgba(37, 99, 235, 0.08); border-color: rgba(37, 99, 235, 0.2); color: #2563eb; }
+.tool-menu { position: absolute; bottom: 100%; left: 24px; right: 24px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 -10px 30px rgba(0,0,0,.08); overflow: hidden; z-index: 100; margin-bottom: 6px; }
+.tool-menu-title { padding: 8px 14px; font-size: 11px; color: #94a3b8; background: #f8fafc; border-bottom: 1px solid #f1f5f9; font-weight: 600; }
 .tool-menu-item { display: flex; align-items: center; gap: 10px; padding: 10px 14px; cursor: pointer; border-bottom: 1px solid #f8fafc; transition: background .12s; }
 .tool-menu-item:last-child { border-bottom: none; }
-.tool-menu-item:hover { background: #eff6ff; }
+.tool-menu-item:hover { background: rgba(37, 99, 235, 0.04); }
 .tool-name { font-size: 13px; font-weight: 600; color: #2563eb; min-width: 160px; flex-shrink: 0; }
 .tool-desc { font-size: 12px; color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tool-empty { padding: 12px 14px; font-size: 13px; color: #94a3b8; }
-.input-area { display: flex; align-items: flex-end; gap: 10px; padding: 10px 20px 8px; }
-.input-box { flex: 1; padding: 10px 14px; border: 1.5px solid #d1d9e6; border-radius: 12px; font-size: 14px; resize: none; outline: none; font-family: inherit; line-height: 1.5; transition: border .2s; }
-.input-box:focus    { border-color: #3b82f6; }
-.input-box:disabled { background: #f8fafc; }
-.send-btn { padding: 10px 20px; background: #3b82f6; color: #fff; border: none; border-radius: 12px; font-size: 14px; cursor: pointer; white-space: nowrap; flex-shrink: 0; transition: background .2s; }
-.send-btn:hover:not(:disabled) { background: #2563eb; }
-.send-btn:disabled { background: #9bb8d8; cursor: not-allowed; }
-.hint { padding: 4px 20px 10px; font-size: 11px; color: #94a3b8; }
-.hint code { background: #f1f5f9; padding: 1px 5px; border-radius: 4px; font-size: 11px; color: #3b82f6; }
+.input-area { display: flex; align-items: flex-end; gap: 10px; padding: 10px 24px 8px; }
+.input-box { flex: 1; padding: 11px 16px; border: 1px solid #e2e8f0; border-radius: 12px; font-size: 14px; resize: none; outline: none; font-family: inherit; line-height: 1.5; transition: all .2s ease; background: #f8fafc; }
+.input-box:focus    { border-color: #2563eb; background: #ffffff; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12); }
+.input-box:disabled { background: #f1f5f9; color: #94a3b8; }
+.send-btn { padding: 10px 22px; background: #2563eb; color: #ffffff; border: none; border-radius: 12px; font-size: 14px; font-weight: 500; cursor: pointer; white-space: nowrap; flex-shrink: 0; transition: all .15s ease; }
+.send-btn:hover:not(:disabled) { background: #1d4ed8; }
+.send-btn:disabled { background: #e2e8f0; color: #94a3b8; cursor: not-allowed; }
+.hint { padding: 4px 24px 12px; font-size: 11px; color: #94a3b8; }
+.hint code { background: rgba(37, 99, 235, 0.05); padding: 1px 5px; border-radius: 4px; font-size: 11px; color: #2563eb; }
 </style>

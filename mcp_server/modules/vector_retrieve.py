@@ -7,8 +7,24 @@ from config import mcp_settings
 logger = logging.getLogger(__name__)
 
 def vector_retrieve(query: str, top_k: int = None) -> list:
-    top_k = top_k or mcp_settings.retrieve_top_k
-    logger.info("[vector_retrieve] 시작 query=" + query[:50] + " top_k=" + str(top_k))
+    # 1. DB에서 실시간 RAG 설정 조회
+    db_retrieve_top_k = top_k or mcp_settings.retrieve_top_k
+    db_rerank_top_n = mcp_settings.rerank_top_n
+
+    conn = psycopg2.connect(**mcp_settings.db_dsn)
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT retrieve_top_k, rerank_top_n FROM rag_settings LIMIT 1")
+            row = cur.fetchone()
+            if row:
+                db_retrieve_top_k = top_k or row[0]
+                db_rerank_top_n = row[1]
+    except Exception as e:
+        logger.warning("[vector_retrieve] DB에서 RAG 설정 조회 실패: " + str(e))
+    finally:
+        conn.close()
+
+    logger.info("[vector_retrieve] 시작 query=" + query[:50] + " retrieve_top_k=" + str(db_retrieve_top_k))
 
     logger.info("[vector_retrieve] 임베딩 중...")
     model   = get_embedder()
@@ -32,17 +48,34 @@ def vector_retrieve(query: str, top_k: int = None) -> list:
     conn = psycopg2.connect(**mcp_settings.db_dsn)
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(sql, (vec_str, vec_str, top_k))
+            cur.execute(sql, (vec_str, vec_str, db_retrieve_top_k))
             rows = [dict(r) for r in cur.fetchall()]
     finally:
         conn.close()
 
-    logger.info("[vector_retrieve] 검색 완료: " + str(len(rows)) + "건")
-    for i, r in enumerate(rows):
+    logger.info("[vector_retrieve] pgvector 검색 완료: " + str(len(rows)) + "건")
+
+    # 2. BGE Reranker 모델로 리랭크 수행
+    if rows and len(rows) > 1:
+        try:
+            from modules.model_loader import get_reranker
+            reranker = get_reranker()
+            pairs = [[query, r["chunk_text"]] for r in rows]
+            scores = reranker.compute_score(pairs, normalize=True)
+            for i, r in enumerate(rows):
+                r["score"] = float(scores[i])
+            rows.sort(key=lambda x: x["score"], reverse=True)
+            logger.info("[vector_retrieve] BGE 리랭킹 완료")
+        except Exception as e:
+            logger.error("[vector_retrieve] 리랭킹 중 오류 발생: " + str(e))
+
+    # 최종 결과 목록
+    final_results = rows[:db_rerank_top_n]
+    for i, r in enumerate(final_results):
         logger.info(
-            "[vector_retrieve] 결과[" + str(i) + "]"
+            "[vector_retrieve] 최종 결과[" + str(i) + "]"
             " score=" + str(round(float(r.get("score", 0)), 4)) +
             " file=" + str(r.get("filename")) +
             " text=" + str(r.get("chunk_text", ""))[:80]
         )
-    return rows
+    return final_results

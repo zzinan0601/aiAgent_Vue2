@@ -70,3 +70,15 @@ export const fetchTools = async () => {
   const res = await api.get('/tools/')
   return res.data   // [{ name, description, full_description }]
 }
+
+// 세션 설정 수정
+export const updateSession = async (id, data) => {
+  const res = await api.patch(`/session/${id}`, data)
+  return res.data
+}
+
+// 세션 컨텍스트 전체 조회
+export const fetchSessionContext = async (id) => {
+  const res = await api.get(`/session/${id}/context`)
+  return res.data
+}

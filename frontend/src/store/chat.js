@@ -1,4 +1,4 @@
-import { fetchSessions, createSession, deleteSession, fetchMessages, fetchTools } from '@/api/chat'
+import { fetchSessions, createSession, deleteSession, fetchMessages, fetchTools, updateSession } from '@/api/chat'
 
 export default {
   namespaced: true,
@@ -60,6 +60,19 @@ export default {
         console.error('툴 목록 로드 실패:', e)
         commit('SET_TOOLS', [])
       }
+    },
+    async saveSessionSettings({ dispatch, commit, state }, { sessionId, title, systemPrompt, fewShots, temperature }) {
+      const updated = await updateSession(sessionId, { 
+        title, 
+        system_prompt: systemPrompt, 
+        few_shots: fewShots,
+        temperature: temperature
+      })
+      await dispatch('loadSessions')
+      if (state.currentSession && state.currentSession.id === sessionId) {
+        commit('SET_CURRENT', updated)
+      }
+      return updated
     }
   }
 }

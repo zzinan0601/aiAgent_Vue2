@@ -125,7 +125,7 @@ def _get_status_msg(node_name: str, node_output: dict, current_tool: str) -> str
     if node_name == "evaluate":
         return "📊 품질 검토 중..."
     if node_name == "refine":
-        return "🔄 재검색 중..."
+        return "🔄 답변 보완 중..."
     return ""
 
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
@@ -143,6 +143,19 @@ def _load_history(db: Session, session_id: str) -> list:
     if session and session.system_prompt:
         history.append(SystemMessage(content=session.system_prompt))
         logger.info("[chat] system_prompt 주입: " + str(len(session.system_prompt)) + "자")
+
+    # few_shots 있으면 system_prompt 바로 뒤에 주입
+    if session and session.few_shots:
+        try:
+            few_shots_list = json.loads(session.few_shots)
+            if isinstance(few_shots_list, list):
+                for fs in few_shots_list:
+                    if fs.get("user") and fs.get("assistant"):
+                        history.append(HumanMessage(content=fs["user"]))
+                        history.append(AIMessage(content=fs["assistant"]))
+                logger.info("[chat] few_shots 주입: " + str(len(few_shots_list)) + "쌍")
+        except Exception as e:
+            logger.error("[chat] few_shots 파싱 실패: " + str(e))
 
     for m in msgs:
         if m.role == "user":

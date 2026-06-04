@@ -6,7 +6,15 @@ class DocumentResponse(BaseModel):
     filename    : str
     chunk_count : int
     status      : str
-    is_knowledge: bool = False   # ← 추가
+    is_knowledge: bool = False
     created_at  : datetime
+    class Config:
+        from_attributes = True
+
+class RagSettingsSchema(BaseModel):
+    chunk_size: int
+    chunk_overlap: int
+    retrieve_top_k: int
+    rerank_top_n: int
     class Config:
         from_attributes = True

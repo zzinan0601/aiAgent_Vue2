@@ -7,6 +7,9 @@ from config import settings
 logger = logging.getLogger(__name__)
 
 def retrieve(db: Session, query: str) -> list:
+    from models.models import get_rag_settings
+    rag_settings = get_rag_settings(db)
+
     model   = get_embedder()
     result  = model.encode(
         [query], batch_size=1, max_length=512,
@@ -21,12 +24,12 @@ def retrieve(db: Session, query: str) -> list:
         WHERE d.status = 'done'
         ORDER BY e.embedding <=> :vec::vector LIMIT :k
     """)
-    rows = db.execute(sql, {"vec": vec_str, "k": settings.retrieve_top_k}).fetchall()
+    rows = db.execute(sql, {"vec": vec_str, "k": rag_settings.retrieve_top_k}).fetchall()
     if not rows:
         return []
 
     candidates = [{"text": r.chunk_text, "filename": r.filename} for r in rows]
-    return _rerank(query, candidates)[:settings.rerank_top_n]
+    return _rerank(query, candidates)[:rag_settings.rerank_top_n]
 
 def _rerank(query: str, candidates: list) -> list:
     try:

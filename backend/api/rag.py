@@ -5,8 +5,8 @@ from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Backgro
 from sqlalchemy.orm import Session
 from database import get_db
 from config import settings
-from models.models import Document, Embedding
-from schemas.rag import DocumentResponse
+from models.models import Document, Embedding, RagSetting, get_rag_settings
+from schemas.rag import DocumentResponse, RagSettingsSchema
 from rag.loader import load_file
 from rag.chunker import split_text
 from rag.embedder import embed_and_save
@@ -45,8 +45,15 @@ def _run_embedding(doc_id: int, file_path: str):
         logger.info("[임베딩 시작] doc_id=" + str(doc_id))
         text   = load_file(file_path)
         logger.info("[파싱 완료] 길이=" + str(len(text)))
-        chunks = split_text(text)
-        logger.info("[청킹 완료] 수=" + str(len(chunks)))
+        
+        # DB에서 RAG 설정 조회
+        rag_settings = get_rag_settings(db)
+        chunks = split_text(
+            text, 
+            chunk_size=rag_settings.chunk_size, 
+            chunk_overlap=rag_settings.chunk_overlap
+        )
+        logger.info(f"[청킹 완료] 수={len(chunks)} (크기={rag_settings.chunk_size}, 오버랩={rag_settings.chunk_overlap})")
         embed_and_save(db, doc_id, chunks)
         logger.info("[임베딩 완료] doc_id=" + str(doc_id))
     except Exception as e:
@@ -119,4 +126,21 @@ def list_knowledge_docs(db: Session = Depends(get_db)):
         Document.status == "done"
     ).all()
     return [{"id": d.id, "filename": d.filename, "chunk_count": d.chunk_count} for d in docs]
+
+
+# ── RAG 설정 조회 및 수정 ──
+@router.get("/settings", response_model=RagSettingsSchema, summary="RAG 설정 조회")
+def get_settings(db: Session = Depends(get_db)):
+    return get_rag_settings(db)
+
+@router.put("/settings", response_model=RagSettingsSchema, summary="RAG 설정 수정")
+def update_settings(req: RagSettingsSchema, db: Session = Depends(get_db)):
+    setting = get_rag_settings(db)
+    setting.chunk_size = req.chunk_size
+    setting.chunk_overlap = req.chunk_overlap
+    setting.retrieve_top_k = req.retrieve_top_k
+    setting.rerank_top_n = req.rerank_top_n
+    db.commit()
+    db.refresh(setting)
+    return setting
 

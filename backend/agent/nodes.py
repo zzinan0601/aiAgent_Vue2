@@ -13,6 +13,16 @@ llm    = ChatOllama(base_url=settings.ollama_base_url, model=settings.llm_model)
 # ── 툴 목록 캐시 ──────────────────────────────
 _tool_cache: list = []
 
+# ── 최종 프롬프트 컨텍스트 캐시 ───────────────
+_last_context_cache: dict = {}
+
+def set_last_context(session_id: str, messages: list):
+    if session_id:
+        _last_context_cache[session_id] = list(messages)
+
+def get_last_context(session_id: str) -> list:
+    return _last_context_cache.get(session_id, [])
+
 def get_tool_cache() -> list:
     return _tool_cache
 
@@ -90,9 +100,30 @@ def tool_list_node(state: AgentState) -> dict:
 # ── 노드 3: 일반 LLM 대화 (스트리밍) ──
 def llm_node(state: AgentState) -> dict:
     last_msg = state["messages"][-1].content
-    logger.info("[llm_chat] 시작: " + last_msg[:80])
+    
+    session_id = state.get("session_id")
+    temp = 0.7
+    if session_id:
+        from database import SessionLocal
+        from models.models import Session as SessionModel
+        db = SessionLocal()
+        try:
+            sess = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+            if sess and sess.temperature is not None:
+                temp = sess.temperature
+        except Exception as e:
+            logger.warning(f"[llm_node] Error fetching temperature: {e}")
+        finally:
+            db.close()
+
+    logger.info(f"[llm_chat] 시작: {last_msg[:80]} | 온도: {temp}")
+    
+    # 최종 컨텍스트 캐싱
+    set_last_context(session_id, state["messages"])
+    
+    local_llm = ChatOllama(base_url=settings.ollama_base_url, model=settings.llm_model, temperature=temp)
     full_content = ""
-    for chunk in llm.stream(state["messages"]):
+    for chunk in local_llm.stream(state["messages"]):
         if chunk.content:
             full_content += chunk.content
     logger.info("[llm_chat] 응답 " + str(len(full_content)) + "자")
@@ -102,25 +133,44 @@ def llm_node(state: AgentState) -> dict:
 # ── 노드 4: 툴 선택 & 인자 추출 ──
 def tool_select_node(state: AgentState) -> dict:
     last_msg = state["messages"][-1].content
+    tool_map = get_tool_map()
+    pre_selected_tool = state.get("tool_name")
 
-    if state.get("tool_name"):
-        logger.info("[tool_select] 이미 지정됨: " + state["tool_name"])
-        return {}
+    if pre_selected_tool:
+        logger.info("[tool_select] 툴 지정됨: " + pre_selected_tool)
+        if pre_selected_tool not in tool_map:
+            logger.warning("[tool_select] 지정된 툴이 tool_map에 없음: " + pre_selected_tool)
+            return {"tool_args": {}}
+            
+        tool_info = tool_map[pre_selected_tool]
+        tool_schema = json.dumps(tool_info, ensure_ascii=False, indent=2)
+        prompt = (
+            f"사용자가 툴 '{pre_selected_tool}'을 사용하기로 지정했습니다.\n"
+            f"아래 [툴 스키마]를 참고하여 사용자 질문에서 해당 툴에 필요한 인자(arguments)만 추출하세요.\n\n"
+            f"[툴 스키마]\n{tool_schema}\n\n"
+            f"[중요 규칙]\n"
+            f"- 스키마에 정의된 파라미터만 사용하세요\n"
+            f"- required=true 파라미터는 반드시 포함하세요\n"
+            f"- 정의되지 않은 파라미터는 절대 추가하지 마세요\n\n"
+            f"[사용자 질문]\n{last_msg}\n\n"
+            f"[반환 형식 - JSON만 반환]\n"
+            f'{{"args": {{파라미터만}}}}'
+        )
+    else:
+        tool_schema = json.dumps(get_tool_cache(), ensure_ascii=False, indent=2)
+        prompt = (
+            "사용자 질문에 맞는 툴과 인자를 선택하세요.\n\n"
+            "[툴 목록 및 파라미터 스키마]\n" + tool_schema + "\n\n"
+            "[중요 규칙]\n"
+            "- 스키마에 정의된 파라미터만 사용하세요\n"
+            "- required=true 파라미터는 반드시 포함하세요\n"
+            "- 정의되지 않은 파라미터는 절대 추가하지 마세요\n\n"
+            "[사용자 질문]\n" + last_msg + "\n\n"
+            "[반환 형식 - JSON만 반환]\n"
+            '{"tool_name": "툴이름", "args": {파라미터만}}'
+        )
 
-    tool_schema = json.dumps(get_tool_cache(), ensure_ascii=False, indent=2)
-    prompt = (
-        "사용자 질문에 맞는 툴과 인자를 선택하세요.\n\n"
-        "[툴 목록 및 파라미터 스키마]\n" + tool_schema + "\n\n"
-        "[중요 규칙]\n"
-        "- 스키마에 정의된 파라미터만 사용하세요\n"
-        "- required=true 파라미터는 반드시 포함하세요\n"
-        "- 정의되지 않은 파라미터는 절대 추가하지 마세요\n\n"
-        "[사용자 질문]\n" + last_msg + "\n\n"
-        "[반환 형식 - JSON만 반환]\n"
-        '{"tool_name": "툴이름", "args": {파라미터만}}'
-    )
-
-    logger.info("[tool_select] LLM 툴 선택 요청 중...")
+    logger.info("[tool_select] LLM 툴 선택/인자 추출 요청 중...")
     res = llm.invoke([HumanMessage(content=prompt)])
     logger.info("[tool_select] LLM 원본 응답:\n" + res.content)
 
@@ -129,24 +179,35 @@ def tool_select_node(state: AgentState) -> dict:
         if "```" in raw:
             raw = raw.split("```")[1].replace("json", "").strip()
         parsed    = json.loads(raw)
-        tool_name = parsed.get("tool_name", "")
-        tool_args = parsed.get("args", {})
-
-        tool_map = get_tool_map()
+        
+        tool_name = pre_selected_tool if pre_selected_tool else parsed.get("tool_name", "")
+        
+        # 1. Extract args with fallback keys
+        tool_args = {}
+        for key in ["args", "tool_args", "arguments"]:
+            if key in parsed and isinstance(parsed[key], dict):
+                tool_args = dict(parsed[key])
+                break
+        
+        # 2. Extract valid parameters from root level as fallback
         if tool_name in tool_map:
             valid_keys = set(tool_map[tool_name]["params"].keys())
+            for k in valid_keys:
+                if k in parsed and k not in tool_args:
+                    tool_args[k] = parsed[k]
+            
             removed    = {k: v for k, v in tool_args.items() if k not in valid_keys}
             tool_args  = {k: v for k, v in tool_args.items() if k in valid_keys}
             if removed:
                 logger.warning("[tool_select] 잘못된 파라미터 제거: " + str(removed))
 
-        logger.info("[tool_select] 선택: " + tool_name + " args=" + str(tool_args))
+        logger.info("[tool_select] 최종 선택: " + tool_name + " args=" + str(tool_args))
         return {"tool_name": tool_name, "tool_args": tool_args}
 
     except Exception as e:
         logger.error("[tool_select] 파싱 실패: " + str(e))
         logger.error("[tool_select] LLM 원문: " + res.content)
-        return {"tool_name": "", "tool_args": {}}
+        return {"tool_name": pre_selected_tool or "", "tool_args": {}}
 
 
 # ── 노드 5: FastMCP 툴 호출 ──
@@ -210,9 +271,38 @@ def generate_answer_node(state: AgentState) -> dict:
             "답변:"
         )
 
-    # llm.stream 으로 토큰 단위 스트리밍
+    session_id = state.get("session_id")
+    temp = 0.7
+    if session_id:
+        from database import SessionLocal
+        from models.models import Session as SessionModel
+        db = SessionLocal()
+        try:
+            sess = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+            if sess and sess.temperature is not None:
+                temp = sess.temperature
+        except Exception as e:
+            logger.warning(f"[generate_answer_node] Error fetching temperature: {e}")
+        finally:
+            db.close()
+
+    logger.info(f"[generate] 시작 tool={tool_name} | 온도={temp}")
+
+    # 기존 대화 이력 복사 (페르소나 및 Few-shot 예시 유지 목적)
+    messages_to_send = list(state["messages"])
+    if messages_to_send:
+        # 마지막 사용자의 최신 질문 메시지를 툴 결과 프롬프트 메시지로 치환
+        messages_to_send[-1] = HumanMessage(content=prompt)
+    else:
+        messages_to_send = [HumanMessage(content=prompt)]
+
+    # 최종 컨텍스트 캐싱
+    set_last_context(session_id, messages_to_send)
+
+    # local_llm.stream 으로 토큰 단위 스트리밍
+    local_llm = ChatOllama(base_url=settings.ollama_base_url, model=settings.llm_model, temperature=temp)
     full_content = ""
-    for chunk in llm.stream([HumanMessage(content=prompt)]):
+    for chunk in local_llm.stream(messages_to_send):
         if chunk.content:
             full_content += chunk.content
 
@@ -306,7 +396,7 @@ def evaluate_node(state: AgentState) -> dict:
 
     logger.info("[evaluate] retry=" + str(retry_count) + " 답변길이=" + str(len(answer)))
 
-    if retry_count >= 2:
+    if retry_count >= 1:
         return {"quality_ok": True}
     # if tool_result.get("status") == "success":
     #     return {"quality_ok": True}
@@ -321,6 +411,7 @@ def evaluate_node(state: AgentState) -> dict:
     )
     res   = llm.invoke([HumanMessage(content=prompt)])
     is_ok = "no" not in res.content.lower()
+    
     logger.info("[evaluate] LLM: '" + res.content.strip() + "' → " + str(is_ok))
     return {"quality_ok": is_ok, "retry_count": retry_count + 1}
 
@@ -339,4 +430,9 @@ def refine_node(state: AgentState) -> dict:
     )
     res = llm.invoke([HumanMessage(content=prompt)])
     logger.info("[refine] 보완: " + res.content.strip())
-    return {"messages": [HumanMessage(content=res.content)]}
+    return {
+        "messages": [
+            AIMessage(content=answer),
+            HumanMessage(content=res.content.strip())
+        ]
+    }

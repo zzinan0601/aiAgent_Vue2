@@ -41,3 +41,13 @@ export const fetchKnowledgeDocs = async () => {
   const res = await api.get('/rag/knowledge/list')
   return res.data
 }
+
+export const fetchRagSettings = async () => {
+  const res = await api.get('/rag/settings')
+  return res.data
+}
+
+export const saveRagSettings = async (settings) => {
+  const res = await api.put('/rag/settings', settings)
+  return res.data
+}

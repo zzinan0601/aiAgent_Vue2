@@ -41,8 +41,31 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-   
+    from sqlalchemy import text
     Base.metadata.create_all(bind=engine)
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS few_shots TEXT DEFAULT '[]';"))
+            conn.execute(text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS use_knowledge BOOLEAN DEFAULT FALSE;"))
+            conn.execute(text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS temperature DOUBLE PRECISION DEFAULT 0.7;"))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS rag_settings (
+                    id INTEGER PRIMARY KEY,
+                    chunk_size INTEGER DEFAULT 500,
+                    chunk_overlap INTEGER DEFAULT 50,
+                    retrieve_top_k INTEGER DEFAULT 10,
+                    rerank_top_n INTEGER DEFAULT 3
+                );
+            """))
+            conn.execute(text("""
+                INSERT INTO rag_settings (id, chunk_size, chunk_overlap, retrieve_top_k, rerank_top_n)
+                VALUES (1, 500, 50, 10, 3)
+                ON CONFLICT (id) DO NOTHING;
+            """))
+            logger.info("sessions 테이블 및 rag_settings 테이블 마이그레이션 추가/확인 완료")
+    except Exception as e:
+        logger.warning("데이터베이스 마이그레이션 확인 실패: " + str(e))
+        
     os.makedirs(settings.upload_dir, exist_ok=True)
     logger.info("MCP 툴 목록 로드 중...")
     try:
