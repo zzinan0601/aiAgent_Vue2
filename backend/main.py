@@ -48,21 +48,39 @@ async def lifespan(app: FastAPI):
             conn.execute(text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS few_shots TEXT DEFAULT '[]';"))
             conn.execute(text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS use_knowledge BOOLEAN DEFAULT FALSE;"))
             conn.execute(text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS temperature DOUBLE PRECISION DEFAULT 0.7;"))
+            conn.execute(text("ALTER TABLE documents ADD COLUMN IF NOT EXISTS doc_metadata JSONB DEFAULT '{}'::jsonb;"))
+            conn.execute(text("ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS chunk_metadata JSONB DEFAULT '{}'::jsonb;"))
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS rag_settings (
                     id INTEGER PRIMARY KEY,
                     chunk_size INTEGER DEFAULT 500,
                     chunk_overlap INTEGER DEFAULT 50,
                     retrieve_top_k INTEGER DEFAULT 10,
-                    rerank_top_n INTEGER DEFAULT 3
+                    rerank_top_n INTEGER DEFAULT 3,
+                    dense_weight DOUBLE PRECISION DEFAULT 0.7,
+                    sparse_weight DOUBLE PRECISION DEFAULT 0.3
                 );
             """))
             conn.execute(text("""
-                INSERT INTO rag_settings (id, chunk_size, chunk_overlap, retrieve_top_k, rerank_top_n)
-                VALUES (1, 500, 50, 10, 3)
+                INSERT INTO rag_settings (id, chunk_size, chunk_overlap, retrieve_top_k, rerank_top_n, dense_weight, sparse_weight)
+                VALUES (1, 500, 50, 10, 3, 0.7, 0.3)
                 ON CONFLICT (id) DO NOTHING;
             """))
-            logger.info("sessions 테이블 및 rag_settings 테이블 마이그레이션 추가/확인 완료")
+            # Sparse 역인덱스 테이블 (하이브리드 RAG)
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS sparse_index (
+                    id SERIAL PRIMARY KEY,
+                    embedding_id INTEGER REFERENCES embeddings(id) ON DELETE CASCADE,
+                    token_id INTEGER NOT NULL,
+                    weight DOUBLE PRECISION NOT NULL
+                );
+            """))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_sparse_token_id ON sparse_index(token_id);"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_sparse_embedding_id ON sparse_index(embedding_id);"))
+            # 기존 rag_settings에 가중치 컬럼 추가 (마이그레이션)
+            conn.execute(text("ALTER TABLE rag_settings ADD COLUMN IF NOT EXISTS dense_weight DOUBLE PRECISION DEFAULT 0.7;"))
+            conn.execute(text("ALTER TABLE rag_settings ADD COLUMN IF NOT EXISTS sparse_weight DOUBLE PRECISION DEFAULT 0.3;"))
+            logger.info("sessions, rag_settings, sparse_index 테이블 마이그레이션 추가/확인 완료")
     except Exception as e:
         logger.warning("데이터베이스 마이그레이션 확인 실패: " + str(e))
         

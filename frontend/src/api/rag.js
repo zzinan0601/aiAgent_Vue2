@@ -5,9 +5,12 @@ export const fetchDocuments = async () => {
   return res.data
 }
 
-export const uploadFile = async (file, onProgress) => {
+export const uploadFile = async (file, metadata, onProgress) => {
   const form = new FormData()
   form.append('file', file)
+  if (metadata && Object.keys(metadata).length > 0) {
+    form.append('metadata', JSON.stringify(metadata))
+  }
   const res = await api.post('/rag/upload', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
     onUploadProgress: e => { if (onProgress) onProgress(Math.round(e.loaded / e.total * 100)) }

@@ -12,3 +12,4 @@ class AgentState(TypedDict):
     quality_ok  : bool
     retry_count : int
     session_id  : str
+    error       : str

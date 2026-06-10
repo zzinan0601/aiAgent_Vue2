@@ -16,5 +16,7 @@ class RagSettingsSchema(BaseModel):
     chunk_overlap: int
     retrieve_top_k: int
     rerank_top_n: int
+    dense_weight: float = 0.7
+    sparse_weight: float = 0.3
     class Config:
         from_attributes = True

@@ -1,6 +1,6 @@
 # AI Agent 프로젝트
 
-LangGraph 기반 AI 에이전트 + RAG + FastMCP 툴 서버
+LangGraph 기반 AI 에이전트 + 하이브리드 RAG (Dense + Sparse) + FastMCP 툴 서버
 
 ---
 
@@ -11,8 +11,9 @@ LangGraph 기반 AI 에이전트 + RAG + FastMCP 툴 서버
 | Frontend | Vue2, Vuex, Vue Router |
 | Backend | FastAPI, LangChain, LangGraph |
 | LLM 엔진 | Ollama (deepseek-r1:8b) |
-| 임베딩 | BGE-M3 (HuggingFace 로컬) |
+| 임베딩 | BGE-M3 (Dense + Sparse, HuggingFace 로컬) |
 | 리랭크 | BGE-Reranker-v2-m3 (HuggingFace 로컬) |
+| 검색 융합 | RRF (Reciprocal Rank Fusion) |
 | MCP | FastMCP 2.x (SSE) |
 | DB | PostgreSQL 16 + pgvector |
 
@@ -104,6 +105,18 @@ project-root/
                   → [evaluate] 품질 평가
                       → OK  -> 종료
                       → 부족 -> [refine] 답변 보완 후 재시도 (최대 2회)
+```
+
+### 하이브리드 검색 흐름 (document_query_tool)
+
+```
+질문 → BGE-M3 인코딩 (Dense + Sparse)
+         ├─ Dense 검색: pgvector 코사인 유사도 → Top K 후보
+         └─ Sparse 검색: sparse_index 역인덱스 → 토큰 매칭 → 점수 집계
+                            ↓
+                  RRF 점수 융합 (가중합)
+                            ↓
+                  BGE Reranker → 최종 Top N
 ```
 
 ---

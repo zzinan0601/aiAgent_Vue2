@@ -28,6 +28,26 @@
             <p class="input-desc">리랭킹 알고리즘을 거쳐 LLM에 최종 전달될 개수입니다.</p>
           </div>
         </div>
+
+        <!-- 하이브리드 검색 가중치 -->
+        <h4 class="sub-title">하이브리드 검색 가중치</h4>
+        <p class="sub-desc">Dense(의미 유사도)와 Sparse(키워드 매칭) 검색 비중을 조절합니다. 합계는 항상 1.0입니다.</p>
+        <div class="weight-sliders">
+          <div class="weight-group">
+            <div class="weight-header">
+              <label class="input-label">🧠 Dense (의미 유사도)</label>
+              <span class="weight-value">{{ settings.dense_weight.toFixed(2) }}</span>
+            </div>
+            <input type="range" class="weight-slider dense-slider" min="0" max="1" step="0.05" :value="settings.dense_weight" @input="onDenseChange" />
+          </div>
+          <div class="weight-group">
+            <div class="weight-header">
+              <label class="input-label">🔑 Sparse (키워드 매칭)</label>
+              <span class="weight-value">{{ settings.sparse_weight.toFixed(2) }}</span>
+            </div>
+            <input type="range" class="weight-slider sparse-slider" min="0" max="1" step="0.05" :value="settings.sparse_weight" @input="onSparseChange" />
+          </div>
+        </div>
         <div class="card-footer">
           <button class="save-settings-btn" :disabled="saving" @click="saveSettings">
             {{ saving ? '저장 중...' : '설정 저장' }}
@@ -58,7 +78,9 @@ export default {
       chunk_size: 500,
       chunk_overlap: 50,
       retrieve_top_k: 10,
-      rerank_top_n: 3
+      rerank_top_n: 3,
+      dense_weight: 0.7,
+      sparse_weight: 0.3
     },
     saving: false
   }),
@@ -87,7 +109,9 @@ export default {
           chunk_size: data.chunk_size,
           chunk_overlap: data.chunk_overlap,
           retrieve_top_k: data.retrieve_top_k,
-          rerank_top_n: data.rerank_top_n
+          rerank_top_n: data.rerank_top_n,
+          dense_weight: data.dense_weight ?? 0.7,
+          sparse_weight: data.sparse_weight ?? 0.3
         }
       } catch (e) {
         console.error('RAG 설정 로드 실패:', e)
@@ -124,6 +148,16 @@ export default {
       } finally {
         this.saving = false
       }
+    },
+    onDenseChange(e) {
+      const v = parseFloat(e.target.value)
+      this.settings.dense_weight  = Math.round(v * 100) / 100
+      this.settings.sparse_weight = Math.round((1 - v) * 100) / 100
+    },
+    onSparseChange(e) {
+      const v = parseFloat(e.target.value)
+      this.settings.sparse_weight = Math.round(v * 100) / 100
+      this.settings.dense_weight  = Math.round((1 - v) * 100) / 100
     }
   }
 }
@@ -177,4 +211,37 @@ export default {
 .save-settings-btn:disabled {
   background: #cbd5e1; color: #94a3b8; cursor: not-allowed;
 }
+
+/* 하이브리드 검색 가중치 */
+.sub-title {
+  margin: 24px 0 4px 0; font-size: 14px; font-weight: 600; color: #334155;
+}
+.sub-desc {
+  margin: 0 0 16px 0; font-size: 11.5px; color: #64748b;
+}
+.weight-sliders {
+  display: flex; gap: 24px;
+}
+@media (max-width: 640px) {
+  .weight-sliders { flex-direction: column; }
+}
+.weight-group {
+  flex: 1; display: flex; flex-direction: column; gap: 8px;
+}
+.weight-header {
+  display: flex; justify-content: space-between; align-items: center;
+}
+.weight-value {
+  font-size: 14px; font-weight: 700; color: #0f172a; font-variant-numeric: tabular-nums;
+}
+.weight-slider {
+  -webkit-appearance: none; appearance: none; width: 100%; height: 6px; border-radius: 3px; outline: none; cursor: pointer;
+}
+.weight-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; cursor: pointer; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+}
+.dense-slider  { background: linear-gradient(90deg, #e0e7ff, #2563eb); }
+.dense-slider::-webkit-slider-thumb  { background: #2563eb; }
+.sparse-slider { background: linear-gradient(90deg, #fce7f3, #db2777); }
+.sparse-slider::-webkit-slider-thumb { background: #db2777; }
 </style>

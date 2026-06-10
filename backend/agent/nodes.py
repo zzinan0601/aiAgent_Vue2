@@ -346,10 +346,20 @@ def _build_document_query_prompt(question: str, result: dict) -> str:
         filename = r.get("filename", "알 수 없음")
         text     = r.get("chunk_text", r.get("text", ""))
         score    = float(r.get("score", 0))
-        context_parts.append(
-            "[" + str(i) + ". 출처: " + filename +
-            " (유사도: " + str(round(score, 2)) + ")]\n" + text
-        )
+        summary  = r.get("summary", "")
+        last_mod = r.get("last_modified_date", "")
+        
+        meta_str = f"출처: {filename} (유사도: {round(score, 2)})"
+        if last_mod:
+            date_only = last_mod.split("T")[0]
+            meta_str += f", 최종수정일: {date_only}"
+            
+        chunk_info = f"[{i}. {meta_str}]\n"
+        if summary:
+            chunk_info += f"[문서 요약]\n{summary}\n\n"
+        chunk_info += f"[본문 내용]\n{text}"
+        
+        context_parts.append(chunk_info)
     context = "\n\n".join(context_parts)
     return (
         "다음은 사내 문서 검색 결과입니다. 검색 내용을 바탕으로 질문에 답해주세요.\n\n"
@@ -357,7 +367,7 @@ def _build_document_query_prompt(question: str, result: dict) -> str:
         "[검색된 문서 내용]\n" + context + "\n\n"
         "[답변 규칙]\n"
         "- 검색 결과에 있는 내용만 사용하세요\n"
-        "- 출처 파일명을 언급하세요\n"
+        "- 출처파일과 파일의 최종수정일을 년월일형식으로 언급하세요\n"
         "- 검색 결과에 없는 내용은 문서에서 찾을 수 없다고 답하세요\n\n"
         "답변:"
     )
@@ -436,3 +446,19 @@ def refine_node(state: AgentState) -> dict:
             HumanMessage(content=res.content.strip())
         ]
     }
+
+
+# ── 노드 9: 에러 핸들러 ──
+def error_handler_node(state: AgentState) -> dict:
+    tool_result = state.get("tool_result", {})
+    error       = state.get("error", "")
+
+    if tool_result.get("status") == "error":
+        error_msg = tool_result.get("message", "알 수 없는 오류가 발생했습니다.")
+    elif error:
+        error_msg = error
+    else:
+        error_msg = "처리 중 오류가 발생했습니다."
+
+    logger.error("[error_handler] " + error_msg)
+    return {"final_answer": "⚠️ 오류가 발생했습니다: " + error_msg + "\n\n다시 시도해 주세요."}

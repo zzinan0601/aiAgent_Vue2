@@ -2,6 +2,11 @@
   <div class="upload-box">
     <h3>파일 업로드</h3>
     <p class="hint">PDF, DOCX, TXT 파일을 지원합니다.</p>
+    <div class="metadata-form" v-if="!uploading">
+      <div class="input-row">
+        <input v-model="metadata.category" type="text" placeholder="카테고리 (옵션. 예: 규정, 매뉴얼)" class="meta-input" />
+      </div>
+    </div>
     <div class="drop-zone" :class="{ dragging }"
       @dragover.prevent="dragging = true"
       @dragleave="dragging = false"
@@ -24,7 +29,7 @@ import { uploadFile } from '@/api/rag'
 
 export default {
   name: 'FileUpload',
-  data: () => ({ dragging: false, uploading: false, progress: 0, resultMsg: '', resultType: 'success' }),
+  data: () => ({ dragging: false, uploading: false, progress: 0, resultMsg: '', resultType: 'success', metadata: { category: '' } }),
   methods: {
     onDrop(e) {
       this.dragging = false
@@ -41,9 +46,15 @@ export default {
       this.progress  = 0
       this.resultMsg = ''
       try {
-        await uploadFile(file, p => { this.progress = p })
+        const metaPayload = {
+          last_modified_date: new Date(file.lastModified).toISOString()
+        }
+        if (this.metadata.category) metaPayload.category = this.metadata.category
+
+        await uploadFile(file, metaPayload, p => { this.progress = p })
         this.resultMsg  = file.name + ' 업로드 완료. 문서 처리가 백그라운드에서 진행됩니다.'
         this.resultType = 'success'
+        this.metadata = { category: '' }
         this.$emit('uploaded')
       } catch {
         this.resultMsg  = '업로드 실패. 파일 형식을 확인하세요.'
@@ -67,4 +78,8 @@ h3 { margin-bottom: 6px; color: #0f172a; font-weight: 600; font-size: 16px; }
 .result { margin-top: 12px; padding: 10px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; }
 .result.success { background: #f0fdf4; color: #15803d; border: 1px solid #dcfce7; }
 .result.error   { background: #fef2f2; color: #b91c1c; border: 1px solid #fee2e2; }
+.metadata-form { margin-bottom: 16px; }
+.input-row { display: flex; gap: 12px; }
+.meta-input { flex: 1; padding: 10px 14px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; outline: none; background: #f8fafc; transition: border .15s, background .15s; }
+.meta-input:focus { border-color: #475569; background: #ffffff; }
 </style>

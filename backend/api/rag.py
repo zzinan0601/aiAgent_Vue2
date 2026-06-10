@@ -14,10 +14,14 @@ from rag.embedder import embed_and_save
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+import json
+from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, BackgroundTasks
+
 @router.post("/upload", summary="파일 업로드")
 async def upload_file(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
+    metadata: str = Form(None),
     db: Session = Depends(get_db)
 ):
     allowed = [".pdf", ".docx", ".txt"]
@@ -30,13 +34,52 @@ async def upload_file(
     with open(save_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
 
-    doc = Document(filename=file.filename, file_path=save_path)
+    user_meta = {}
+    if metadata:
+        try:
+            user_meta = json.loads(metadata)
+        except Exception:
+            pass
+
+    doc = Document(filename=file.filename, file_path=save_path, doc_metadata=user_meta)
     db.add(doc)
     db.commit()
     db.refresh(doc)
 
     background_tasks.add_task(_run_embedding, doc.id, save_path)
     return {"doc_id": doc.id, "filename": file.filename, "status": "임베딩 시작됨"}
+
+def _extract_metadata_via_llm(text: str) -> dict:
+    from langchain_ollama import ChatOllama
+    from langchain_core.messages import SystemMessage, HumanMessage
+    import re
+    
+    try:
+        # 텍스트 앞부분(약 3000자)만 사용하여 요약/키워드 추출 (토큰 절약 및 속도)
+        sample_text = text[:3000]
+        
+        prompt = """당신은 문서 메타데이터 추출기입니다.
+다음 문서 내용을 분석하여 JSON 형식으로 메타데이터를 추출하세요.
+반드시 마크다운 코드 블록(```json ... ```) 없이 순수 JSON 문자열만 반환해야 합니다.
+
+필수 포함 항목:
+- "category": 문서 종류 (예: "규정", "계약서", "회의록", "매뉴얼", "기타")
+- "summary": 문서의 1~2줄 요약
+
+문서 내용:
+"""
+        llm = ChatOllama(model=settings.llm_model, base_url=settings.ollama_base_url, temperature=0.1)
+        response = llm.invoke([SystemMessage(content=prompt), HumanMessage(content=sample_text)])
+        
+        # JSON 파싱 시도
+        res_text = response.content.strip()
+        # ```json 제거
+        res_text = re.sub(r"^```(?:json)?|```$", "", res_text, flags=re.MULTILINE).strip()
+        
+        return json.loads(res_text)
+    except Exception as e:
+        logger.warning(f"[메타데이터 자동 추출 실패] {e}")
+        return {}
 
 def _run_embedding(doc_id: int, file_path: str):
     from database import SessionLocal
@@ -46,6 +89,20 @@ def _run_embedding(doc_id: int, file_path: str):
         text   = load_file(file_path)
         logger.info("[파싱 완료] 길이=" + str(len(text)))
         
+        # 문서 모델 가져와서 현재 메타데이터 확인
+        doc = db.query(Document).filter(Document.id == doc_id).first()
+        user_meta = doc.doc_metadata or {}
+        
+        # LLM 자동 추출 진행
+        logger.info("[메타데이터 추출 중...]")
+        auto_meta = _extract_metadata_via_llm(text)
+        logger.info(f"[메타데이터 추출 완료] {auto_meta}")
+        
+        # 사용자가 수동 입력한 값이 있으면 우선순위로 병합
+        merged_meta = {**auto_meta, **user_meta}
+        doc.doc_metadata = merged_meta
+        db.commit()
+        
         # DB에서 RAG 설정 조회
         rag_settings = get_rag_settings(db)
         chunks = split_text(
@@ -54,7 +111,7 @@ def _run_embedding(doc_id: int, file_path: str):
             chunk_overlap=rag_settings.chunk_overlap
         )
         logger.info(f"[청킹 완료] 수={len(chunks)} (크기={rag_settings.chunk_size}, 오버랩={rag_settings.chunk_overlap})")
-        embed_and_save(db, doc_id, chunks)
+        embed_and_save(db, doc_id, chunks, merged_meta)
         logger.info("[임베딩 완료] doc_id=" + str(doc_id))
     except Exception as e:
         import traceback
@@ -136,10 +193,12 @@ def get_settings(db: Session = Depends(get_db)):
 @router.put("/settings", response_model=RagSettingsSchema, summary="RAG 설정 수정")
 def update_settings(req: RagSettingsSchema, db: Session = Depends(get_db)):
     setting = get_rag_settings(db)
-    setting.chunk_size = req.chunk_size
-    setting.chunk_overlap = req.chunk_overlap
+    setting.chunk_size     = req.chunk_size
+    setting.chunk_overlap  = req.chunk_overlap
     setting.retrieve_top_k = req.retrieve_top_k
-    setting.rerank_top_n = req.rerank_top_n
+    setting.rerank_top_n   = req.rerank_top_n
+    setting.dense_weight   = req.dense_weight
+    setting.sparse_weight  = req.sparse_weight
     db.commit()
     db.refresh(setting)
     return setting
