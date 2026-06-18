@@ -5,7 +5,7 @@ venv/
 .env
 backend/uploads/
 mcp_server/charts/
-models/
+/models/
 frontend/node_modules/
 frontend/dist/
 logs/
