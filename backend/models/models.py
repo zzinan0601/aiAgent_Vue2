@@ -12,7 +12,7 @@ class Session(Base):
     system_prompt = Column(Text, default="")        # ← 추가
     few_shots     = Column(Text, default="[]")
     use_knowledge = Column(Boolean, default=False)
-    temperature   = Column(Float, default=0.7)
+    temperature   = Column(Float, default=0.1)
     created_at    = Column(DateTime, server_default=func.now())
     updated_at    = Column(DateTime, server_default=func.now(), onupdate=func.now())
     messages      = relationship("Message", back_populates="session", cascade="all, delete")

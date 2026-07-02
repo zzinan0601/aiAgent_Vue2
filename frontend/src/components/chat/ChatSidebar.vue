@@ -1,8 +1,8 @@
 <template>
   <div class="sidebar">
-    <!-- 기본지식 토글 -->
+    <!-- 스킬 사용 토글 -->
     <div class="knowledge-bar">
-      <span class="knowledge-label">기본지식 사용</span>
+      <span class="knowledge-label">스킬 사용</span>
       <label class="toggle">
         <input type="checkbox" v-model="localUseKnowledge" @change="onKnowledgeToggle" />
         <span class="toggle-slider" />
@@ -18,7 +18,7 @@
         @click="$emit('select', s)"
       >
         <span class="session-title">{{ s.title || '새 채팅' }}</span>
-        <span v-if="s.use_knowledge" class="k-badge">지식</span>
+        <span v-if="s.use_knowledge" class="k-badge">스킬</span>
         <button class="del-btn" @click.stop="$emit('delete', s.id)">✕</button>
       </div>
       <div v-if="!sessions.length" class="empty">채팅 내역 없음</div>

@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     system_prompt TEXT DEFAULT '',
     few_shots     TEXT DEFAULT '[]',
     use_knowledge BOOLEAN DEFAULT FALSE,
-    temperature   DOUBLE PRECISION DEFAULT 0.7,
+    temperature   DOUBLE PRECISION DEFAULT 0.1,
     created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -54,13 +54,6 @@ CREATE TABLE IF NOT EXISTS sparse_index (
 CREATE INDEX IF NOT EXISTS idx_sparse_token_id ON sparse_index(token_id);
 CREATE INDEX IF NOT EXISTS idx_sparse_embedding_id ON sparse_index(embedding_id);
 
--- Migration support for older databases
-ALTER TABLE documents ADD COLUMN IF NOT EXISTS is_knowledge BOOLEAN DEFAULT FALSE;
-ALTER TABLE sessions  ADD COLUMN IF NOT EXISTS system_prompt TEXT DEFAULT '';
-ALTER TABLE sessions  ADD COLUMN IF NOT EXISTS few_shots     TEXT DEFAULT '[]';
-ALTER TABLE sessions  ADD COLUMN IF NOT EXISTS use_knowledge BOOLEAN DEFAULT FALSE;
-ALTER TABLE sessions  ADD COLUMN IF NOT EXISTS temperature   DOUBLE PRECISION DEFAULT 0.7;
-
 CREATE TABLE IF NOT EXISTS rag_settings (
     id             INTEGER PRIMARY KEY,
     chunk_size     INTEGER DEFAULT 500,
@@ -70,10 +63,6 @@ CREATE TABLE IF NOT EXISTS rag_settings (
     dense_weight   DOUBLE PRECISION DEFAULT 0.7,
     sparse_weight  DOUBLE PRECISION DEFAULT 0.3
 );
-
--- 가중치 컬럼 마이그레이션 (기존 DB 호환)
-ALTER TABLE rag_settings ADD COLUMN IF NOT EXISTS dense_weight  DOUBLE PRECISION DEFAULT 0.7;
-ALTER TABLE rag_settings ADD COLUMN IF NOT EXISTS sparse_weight DOUBLE PRECISION DEFAULT 0.3;
 
 INSERT INTO rag_settings (id, chunk_size, chunk_overlap, retrieve_top_k, rerank_top_n, dense_weight, sparse_weight)
 VALUES (1, 500, 50, 10, 3, 0.7, 0.3)

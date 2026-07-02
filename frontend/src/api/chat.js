@@ -34,12 +34,12 @@ export const fetchMessages = async (sessionId) => {
  * - onDone   : 완료 콜백
  * - onError  : 에러 콜백
  */
-export const streamChat = (sessionId, message, mode = 'auto', { onToken, onStatus, onClear, onDone, onError }) => {
+export const streamChat = (sessionId, message, mode = 'auto', model = '', { onToken, onStatus, onClear, onDone, onError }) => {
   // fetch로 SSE POST 요청
   fetch('http://localhost:8888/api/chat/', {
     method : 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body   : JSON.stringify({ session_id: sessionId, message, mode })
+    body   : JSON.stringify({ session_id: sessionId, message, mode, model })
   }).then(async res => {
     const reader  = res.body.getReader()
     const decoder = new TextDecoder()
@@ -80,5 +80,11 @@ export const updateSession = async (id, data) => {
 // 세션 컨텍스트 전체 조회
 export const fetchSessionContext = async (id) => {
   const res = await api.get(`/session/${id}/context`)
+  return res.data
+}
+
+// Ollama 모델 목록 조회
+export const fetchOllamaModels = async () => {
+  const res = await api.get('/models/')
   return res.data
 }

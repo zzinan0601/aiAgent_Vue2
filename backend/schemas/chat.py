@@ -6,6 +6,7 @@ class ChatRequest(BaseModel):
     session_id: str
     message   : str
     mode      : str = "auto"
+    model     : str = ""
 
 class MessageResponse(BaseModel):
     id        : int
@@ -21,7 +22,7 @@ class SessionResponse(BaseModel):
     system_prompt : Optional[str] = ""
     few_shots     : Optional[str] = "[]"
     use_knowledge : bool = False
-    temperature   : float = 0.7
+    temperature   : float = 0.1
     created_at    : datetime
     updated_at    : datetime
     class Config:
@@ -37,4 +38,4 @@ class UpdateSessionRequest(BaseModel):
 class CreateSessionRequest(BaseModel):
     title         : Optional[str] = "새 채팅"
     use_knowledge : bool = False
-    temperature   : Optional[float] = 0.7
+    temperature   : Optional[float] = 0.1

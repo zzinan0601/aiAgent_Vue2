@@ -7,6 +7,7 @@ class DocumentResponse(BaseModel):
     chunk_count : int
     status      : str
     is_knowledge: bool = False
+    doc_metadata: dict = {}
     created_at  : datetime
     class Config:
         from_attributes = True

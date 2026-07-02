@@ -31,9 +31,14 @@
               :class="msg.role"
             >
               <div class="card-header">
-                <span class="role-badge" :class="msg.role">
-                  {{ getRoleName(msg.role) }}
-                </span>
+                <div class="header-left">
+                  <span class="role-badge" :class="msg.role">
+                    {{ getRoleName(msg.role) }}
+                  </span>
+                  <span v-if="getInjectionBadge(msg.content)" class="injection-badge" :class="getInjectionBadge(msg.content).type">
+                    {{ getInjectionBadge(msg.content).label }}
+                  </span>
+                </div>
                 <span class="msg-index">#{{ idx + 1 }}</span>
               </div>
 
@@ -41,7 +46,7 @@
                 <!-- 툴 결과 등 장황한 프롬프트는 스크롤 가능한 코드 블록으로 렌더링 -->
                 <div v-if="isLongPrompt(msg.content)" class="long-prompt-wrap">
                   <div class="prompt-meta">
-                    🛠️ 툴 결과가 결합된 최종 프롬프트 ({{ msg.content.length }}자)
+                    {{ getPromptHeader(msg) }}
                   </div>
                   <pre class="code-block"><code>{{ msg.content }}</code></pre>
                 </div>
@@ -107,10 +112,33 @@ export default {
       if (role === 'assistant') return 'Assistant Answer'
       return role
     },
+    getInjectionBadge(content) {
+      if (!content) return null
+      if (content.includes('[스킬 매뉴얼]')) return { label: '✨ 스킬 주입됨', type: 'skill' }
+      if (content.includes('다음은 사내 문서 검색')) return { label: '📚 RAG 문서 주입됨', type: 'rag' }
+      if (content.includes('데이터입니다. 한국어로 리포트를 작성해주세요')) return { label: '📈 데이터 리포트 주입됨', type: 'report' }
+      return null
+    },
+    getPromptHeader(msg) {
+      if (!msg || !msg.content) return ''
+      const len = msg.content.length
+      if (msg.content.includes('다음은 사내 문서 검색') || msg.content.includes('다음은 DB 조회') || msg.content.includes('데이터입니다. 한국어로 리포트를 작성해주세요')) {
+        return `🛠️ 툴 결과가 결합된 최종 프롬프트 (${len}자)`
+      }
+      if (msg.content.includes('[스킬 매뉴얼]')) {
+        return `✨ 스킬 매뉴얼이 결합된 시스템 프롬프트 (${len}자)`
+      }
+      if (msg.role === 'system') {
+        return `⚙️ 시스템 프롬프트 상세 (${len}자)`
+      }
+      if (msg.role === 'assistant') {
+        return `💬 AI 답변 상세 (${len}자)`
+      }
+      return `🗣️ 메시지 상세 (${len}자)`
+    },
     isLongPrompt(content) {
-      // 툴 프롬프트 형식(문서 검색, DB 결과 지시어 등)이거나 길이가 180자 초과 시 코드블록 렌더링
       if (!content) return false
-      return content.length > 180 || content.includes('다음은 사내 문서') || content.includes('다음은 DB 조회')
+      return content.length > 180 || content.includes('다음은 사내 문서') || content.includes('다음은 DB 조회') || content.includes('[스킬 매뉴얼]')
     },
     copyToClipboard() {
       if (this.copied) return
@@ -226,9 +254,19 @@ export default {
 .card-header {
   display: flex; align-items: center; justify-content: space-between;
 }
+.header-left {
+  display: flex; align-items: center; gap: 8px;
+}
 .role-badge {
   font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 20px;
 }
+.injection-badge {
+  font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 4px;
+}
+.injection-badge.skill { background: rgba(139, 92, 246, 0.1); color: #8b5cf6; border: 1px solid rgba(139, 92, 246, 0.2); }
+.injection-badge.rag { background: rgba(245, 158, 11, 0.1); color: #d97706; border: 1px solid rgba(245, 158, 11, 0.2); }
+.injection-badge.db { background: rgba(59, 130, 246, 0.1); color: #2563eb; border: 1px solid rgba(59, 130, 246, 0.2); }
+.injection-badge.report { background: rgba(236, 72, 153, 0.1); color: #db2777; border: 1px solid rgba(236, 72, 153, 0.2); }
 .role-badge.system {
   background: rgba(37, 99, 235, 0.08); color: #2563eb;
 }

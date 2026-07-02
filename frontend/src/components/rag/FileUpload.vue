@@ -16,7 +16,7 @@
       <span v-if="!uploading">클릭하거나 파일을 여기로 드래그하세요.</span>
       <span v-else>업로드 중... {{ progress }}%</span>
     </div>
-    <input ref="fileInput" type="file" accept=".pdf,.docx,.txt" style="display:none" @change="onFileChange" />
+    <input ref="fileInput" type="file" accept=".pdf,.docx,.txt,.md" style="display:none" @change="onFileChange" />
     <div v-if="uploading" class="progress-bar">
       <div class="progress-fill" :style="{ width: progress + '%' }" />
     </div>

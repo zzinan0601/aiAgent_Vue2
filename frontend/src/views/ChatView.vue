@@ -64,7 +64,7 @@ export default {
       }
     },
 
-    async sendMessage({ message, mode }) {
+    async sendMessage({ message, mode, model }) {
       if (!this.currentSession) return
 
       this.$store.commit('chat/ADD_MESSAGE', { role: 'user', content: message })
@@ -73,7 +73,7 @@ export default {
       this.statusMsg = ''
       let fullAnswer = ''
 
-      streamChat(this.currentSession.id, message, mode, {
+      streamChat(this.currentSession.id, message, mode, model, {
         onToken: (chunk) => {
             fullAnswer += chunk
             this.$store.commit('chat/UPDATE_LAST_MSG', fullAnswer)

@@ -1,6 +1,8 @@
 import os
 import uuid
 import logging
+import base64
+import io
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -15,14 +17,20 @@ def _save(fig, title: str) -> dict:
     os.makedirs(chart_dir, exist_ok=True)
     filename = uuid.uuid4().hex + ".png"
     path     = os.path.join(chart_dir, filename)
-    url      = mcp_settings.chart_url_base + "/" + filename
     plt.title(title, fontsize=14)
     plt.tight_layout()
     plt.savefig(path, dpi=100)
+    
+    buf = io.BytesIO()
+    plt.savefig(buf, format="png", dpi=100)
+    buf.seek(0)
+    img_b64 = base64.b64encode(buf.read()).decode("utf-8")
+    data_url = f"data:image/png;base64,{img_b64}"
     plt.close()
+
     logger.info("[chart] 저장: " + path)
-    logger.info("[chart] URL: " + url)
-    return {"path": path, "url": url}
+    logger.info("[chart] Base64 생성 완료 (길이: " + str(len(data_url)) + ")")
+    return {"path": path, "url": data_url, "base64": data_url}
 
 def generate_bar_chart(labels: list, values: list, title: str = "차트") -> dict:
     fig, ax = plt.subplots(figsize=(10, 5))

@@ -6,7 +6,7 @@ def load_file(file_path: str) -> str:
     ext = os.path.splitext(file_path)[1].lower()
     if ext == ".pdf":   return _load_pdf(file_path)
     elif ext == ".docx": return _load_docx(file_path)
-    elif ext == ".txt":  return _load_txt(file_path)
+    elif ext in (".txt", ".md"):  return _load_txt(file_path)
     else: raise ValueError("지원하지 않는 파일 형식: " + ext)
 
 def _load_pdf(path):

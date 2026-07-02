@@ -32,19 +32,6 @@ export const deleteDocument = async (docId) => {
   await api.delete('/rag/' + docId)
 }
 
-// 기존 코드 하단에 추가
-export const toggleKnowledge = async (docId, isKnowledge) => {
-  const res = await api.patch(
-    '/rag/' + docId + '/knowledge?is_knowledge=' + isKnowledge
-  )
-  return res.data
-}
-
-export const fetchKnowledgeDocs = async () => {
-  const res = await api.get('/rag/knowledge/list')
-  return res.data
-}
-
 export const fetchRagSettings = async () => {
   const res = await api.get('/rag/settings')
   return res.data

@@ -2,14 +2,18 @@ from typing import TypedDict, Annotated
 from langgraph.graph.message import add_messages
 
 class AgentState(TypedDict):
-    messages    : Annotated[list, add_messages]
-    mode        : str
-    intent      : str
-    tool_name   : str
-    tool_args   : dict
-    tool_result : dict
-    final_answer: str
-    quality_ok  : bool
-    retry_count : int
-    session_id  : str
-    error       : str
+    messages      : Annotated[list, add_messages]
+    mode          : str
+    intent        : str
+    tool_name     : str
+    tool_args     : dict
+    tool_result   : dict
+    final_answer  : str
+    quality_ok    : bool
+    retry_count   : int
+    session_id    : str
+    model         : str
+    error         : str
+    selected_skill: str
+    skill_content : str
+    use_knowledge : bool

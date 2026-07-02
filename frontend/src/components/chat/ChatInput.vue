@@ -2,10 +2,17 @@
   <div class="input-wrap">
     <!-- 모드 선택 -->
     <div class="mode-bar">
-      <label v-for="opt in modeOptions" :key="opt.value" class="mode-opt" :class="{ active: mode === opt.value }">
-        <input type="radio" v-model="mode" :value="opt.value" hidden />
-        {{ opt.label }}
-      </label>
+      <div class="mode-options">
+        <label v-for="opt in modeOptions" :key="opt.value" class="mode-opt" :class="{ active: mode === opt.value }">
+          <input type="radio" v-model="mode" :value="opt.value" hidden />
+          {{ opt.label }}
+        </label>
+      </div>
+      <div class="model-selector">
+        <select v-model="selectedModel" class="model-select" :disabled="disabled">
+          <option v-for="m in modelList" :key="m" :value="m">{{ m }}</option>
+        </select>
+      </div>
     </div>
 
     <!-- @ 툴 자동완성 -->
@@ -46,21 +53,35 @@
 
 <script>
 import { mapState } from 'vuex'
+import { fetchOllamaModels } from '@/api/chat'
 
 export default {
   name: 'ChatInput',
   props: { disabled: { type: Boolean, default: false } },
   data: () => ({
-    text        : '',
-    mode        : 'auto',
-    showToolMenu: false,
-    atQuery     : '',
-    modeOptions : [
+    text         : '',
+    mode         : 'auto',
+    showToolMenu : false,
+    atQuery      : '',
+    selectedModel: '',
+    modelList    : [],
+    modeOptions  : [
       { value: 'auto', label: '자동' },
       { value: 'chat', label: '대화' },
       { value: 'tool', label: '도구 실행' }
     ]
   }),
+  async created() {
+    try {
+      const data = await fetchOllamaModels()
+      this.modelList = (data.models || []).map(m => m.name)
+      if (this.modelList.length > 0) {
+        this.selectedModel = this.modelList[0]
+      }
+    } catch (e) {
+      console.error('모델 목록 로드 실패:', e)
+    }
+  },
   computed: {
     ...mapState('chat', ['tools']),
     placeholder() {
@@ -109,7 +130,7 @@ export default {
     send() {
       const msg = this.text.trim()
       if (!msg || this.disabled) return
-      this.$emit('send', { message: msg, mode: this.mode })
+      this.$emit('send', { message: msg, mode: this.mode, model: this.selectedModel })
       this.text         = ''
       this.showToolMenu = false
       this.$nextTick(() => { this.$refs.textarea.style.height = 'auto' })
@@ -125,7 +146,13 @@ export default {
 
 <style scoped>
 .input-wrap { background: #ffffff; border-top: 1px solid #e2e8f0; flex-shrink: 0; position: relative; box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.015); }
-.mode-bar { display: flex; gap: 6px; padding: 10px 24px 0; }
+.mode-bar { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 10px 24px 0; }
+.mode-options { display: flex; gap: 6px; }
+.model-selector { display: flex; align-items: center; }
+.model-select { padding: 5px 10px; border-radius: 8px; font-size: 12px; border: 1px solid #e2e8f0; color: #475569; background: #ffffff; cursor: pointer; outline: none; font-weight: 500; transition: all .15s ease; max-width: 200px; }
+.model-select:hover { border-color: #cbd5e1; }
+.model-select:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08); }
+.model-select:disabled { background: #f1f5f9; color: #94a3b8; cursor: not-allowed; }
 .mode-opt { padding: 5px 15px; border-radius: 20px; font-size: 12px; cursor: pointer; border: 1px solid #e2e8f0; color: #64748b; background: #ffffff; user-select: none; transition: all .15s ease; font-weight: 500; }
 .mode-opt:hover  { border-color: #cbd5e1; color: #334155; }
 .mode-opt.active { background: rgba(37, 99, 235, 0.08); border-color: rgba(37, 99, 235, 0.2); color: #2563eb; }

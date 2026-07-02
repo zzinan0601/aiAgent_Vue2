@@ -47,7 +47,7 @@ async def lifespan(app: FastAPI):
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS few_shots TEXT DEFAULT '[]';"))
             conn.execute(text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS use_knowledge BOOLEAN DEFAULT FALSE;"))
-            conn.execute(text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS temperature DOUBLE PRECISION DEFAULT 0.7;"))
+            conn.execute(text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS temperature DOUBLE PRECISION DEFAULT 0.1;"))
             conn.execute(text("ALTER TABLE documents ADD COLUMN IF NOT EXISTS doc_metadata JSONB DEFAULT '{}'::jsonb;"))
             conn.execute(text("ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS chunk_metadata JSONB DEFAULT '{}'::jsonb;"))
             conn.execute(text("""
@@ -91,6 +91,15 @@ async def lifespan(app: FastAPI):
         logger.info("MCP 툴 로드 완료")
     except Exception as e:
         logger.exception("MCP 툴 로드 실패")
+
+    # 스킬 카탈로그 로드
+    from agent.skills import load_skill_catalog
+    try:
+        skills = load_skill_catalog()
+        logger.info("스킬 카탈로그 로드 완료: " + str(len(skills)) + "개")
+    except Exception as e:
+        logger.warning("스킬 카탈로그 로드 실패: " + str(e))
+
     yield
 
 app = FastAPI(
@@ -145,11 +154,13 @@ from api.session import router as session_router
 from api.chat    import router as chat_router
 from api.rag     import router as rag_router
 from api.tools   import router as tools_router
+from api.models  import router as models_router
 
 app.include_router(session_router, prefix="/api/session", tags=["Session"])
 app.include_router(chat_router,    prefix="/api/chat",    tags=["Chat"])
 app.include_router(rag_router,     prefix="/api/rag",     tags=["RAG"])
 app.include_router(tools_router,   prefix="/api/tools",   tags=["Tools"])
+app.include_router(models_router,  prefix="/api/models",  tags=["Models"])
 
 @app.get("/", tags=["Health"])
 def health_check():

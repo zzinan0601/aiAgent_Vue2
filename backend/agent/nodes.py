@@ -6,9 +6,14 @@ from langchain_core.messages import HumanMessage, AIMessage
 from agent.state import AgentState
 from agent.mcp_client import call_mcp_tool, list_mcp_tools
 from config import settings
+from agent.skills import get_skill_catalog, load_skill_content
 
 logger = logging.getLogger(__name__)
 llm    = ChatOllama(base_url=settings.ollama_base_url, model=settings.llm_model)
+def _get_llm(state: dict, temperature: float = 0.0):
+    model_name = state.get("model") or settings.llm_model
+    return ChatOllama(base_url=settings.ollama_base_url, model=model_name, temperature=temperature)
+
 
 # ── 툴 목록 캐시 ──────────────────────────────
 _tool_cache: list = []
@@ -48,18 +53,21 @@ async def load_tools_from_mcp():
 
 # ── 노드 1: 질문 분석 ──
 def analyze_node(state: AgentState) -> dict:
-    mode     = state.get("mode", "auto")
     last_msg = state["messages"][-1].content
+    session_id = state.get("session_id")
 
-    logger.info("=" * 60)
-    logger.info("[analyze] 질문: " + last_msg)
-    logger.info("[analyze] mode: " + mode)
+    mode = state.get("mode", "auto")
+
+    logger.info(f"[analyze] mode: {mode}")
 
     if mode == "chat":
         return {"intent": "chat"}
-    if mode == "tool":
-        return {"intent": "tool"}
+    elif mode == "rag":
+        return {"intent": "tool", "tool_name": "document_query_tool", "tool_args": {"query": last_msg}}
+    elif mode == "report":
+        return {"intent": "tool", "tool_name": "report_tool"}
 
+    import re
     at_match = re.match(r"@(\w+)\s*(.*)", last_msg.strip(), re.DOTALL)
     if at_match:
         tool_name = at_match.group(1)
@@ -72,21 +80,84 @@ def analyze_node(state: AgentState) -> dict:
             logger.info("[analyze] 툴 이름 감지: " + name)
             return {"intent": "tool", "tool_name": name}
 
-    if "툴 목록" in last_msg or "tool list" in last_msg.lower():
+    tool_list_keywords = ["툴 목록", "툴목록", "도구 목록", "도구목록", "사용 가능한 툴", "어떤 툴", "무슨 툴", "기능 목록"]
+    if any(k in last_msg for k in tool_list_keywords):
         return {"intent": "tool_list"}
+
+    tool_descriptions = "\n".join([f"- {t['name']}: {t['description'].splitlines()[0]}" for t in get_tool_cache()])
+
+    use_knowledge = state.get("use_knowledge", False)
+    skill_catalog = get_skill_catalog() if use_knowledge else []
+    skill_section = ""
+    if skill_catalog:
+        skill_lines = "\n".join([f"- {s['name']}: {s['description']}" for s in skill_catalog])
+        skill_section = "\n스킬 목록:\n" + skill_lines + "\n"
 
     prompt = (
         "사용자 질문을 분석하세요.\n"
-        "툴이 필요하면 'tool', 일반 대화면 'chat'으로만 답하세요.\n"
-        "툴 목록: " + str(get_tool_names()) + "\n"
+        "1) 사용자가 사용 가능한 도구/툴의 종류나 목록에 대해 묻는다면 'tool_list'라고 답하세요.\n"
+        "2) 아래 툴 목록의 설명을 확인하고, 질문을 해결하는 데 특정 툴 호출이 필요하면 'tool'이라고 답하세요.\n"
+        "툴 목록:\n" + tool_descriptions + "\n"
+        + ("3) 아래 스킬 목록 중 질문에 필요한 전문 지식이 있다면 'skill:스킬1,스킬2'처럼 관련 스킬 이름을 모두 쉼표로 구분해 답하세요. 동시에 툴도 필요하면 'skill:스킬1,tool'처럼 답하세요.\n" if skill_catalog else "")
+        + skill_section + "\n"
+        + "4) 툴과 스킬 없이 일반적인 대화나 인사로 충분하면 'chat'이라고 답하세요.\n"
+        "답변은 오직 위 형식 중 하나로만 하세요. \n\n"
+        
+       
         "질문: " + last_msg + "\n"
         "판단:"
     )
-    res    = llm.invoke([HumanMessage(content=prompt)])
-    intent = "tool" if "tool" in res.content.lower() else "chat"
-    logger.info("[analyze] LLM 응답: '" + res.content.strip() + "' → intent=" + intent)
-    return {"intent": intent}
+    res    = _get_llm(state).invoke([HumanMessage(content=prompt)])
+    res_lower = res.content.strip().lower()
+    
+    # 마크다운 포맷 기호 제거 (소형 모델 환각 방지)
+    res_lower = res_lower.replace("**", "").replace("__", "").replace("`", "").strip()
 
+    selected_skill = ""
+    skill_content  = ""
+
+    if "tool_list" in res_lower:
+        intent = "tool_list"
+    elif "skill:" in res_lower:
+        # skill: 문자열 이후의 텍스트 파싱 (다중 스킬 쉼표 분리 지원)
+        skill_start = res_lower.find("skill:")
+        parts = [p.strip() for p in res_lower[skill_start:].replace("skill:", "").split(",")]
+        has_tool = "tool" in parts
+        skill_keys = [p for p in parts if p != "tool" and p]
+
+        matched_skills = []
+        matched_contents = []
+        for key in skill_keys:
+            key_tokens = set([t for t in key.replace("_", " ").split() if len(t) >= 2])
+            for s in skill_catalog:
+                s_name_lower = s["name"].lower()
+                s_tokens = set([t for t in s_name_lower.replace("_", " ").split() if len(t) >= 2])
+                matched = (s_name_lower == key or key in s_name_lower or s_name_lower in key)
+                if not matched and key_tokens and s_tokens:
+                    common = key_tokens & s_tokens
+                    # 고유 핵심 키워드(아키텍처, 계산공식, 산출시스템 등)가 겹치거나 2개 이상 일치하면 매칭
+                    if any(t not in ["표준시간", "가이드", "시스템"] for t in common) or len(common) >= 2:
+                        matched = True
+
+                if matched:
+                    if s["name"] not in matched_skills:
+                        matched_skills.append(s["name"])
+                        matched_contents.append(f"=== [스킬: {s['name']}] ===\n" + load_skill_content(s["name"]))
+                    break
+
+        selected_skill = ", ".join(matched_skills)
+        skill_content  = "\n\n".join(matched_contents)
+        if selected_skill:
+            logger.info("[analyze] 스킬 발동: " + selected_skill + " (총 " + str(len(skill_content)) + "자)")
+
+        intent = "tool" if has_tool else "chat"
+    elif "tool" in res_lower:
+        intent = "tool"
+    else:
+        intent = "chat"
+
+    logger.info("[analyze] LLM 응답: '" + res.content.strip() + "' → intent=" + intent + (" skill=" + selected_skill if selected_skill else ""))
+    return {"intent": intent, "selected_skill": selected_skill, "skill_content": skill_content}
 
 # ── 노드 2: 툴 목록 응답 ──
 def tool_list_node(state: AgentState) -> dict:
@@ -102,7 +173,7 @@ def llm_node(state: AgentState) -> dict:
     last_msg = state["messages"][-1].content
     
     session_id = state.get("session_id")
-    temp = 0.7
+    temp = 0.1
     if session_id:
         from database import SessionLocal
         from models.models import Session as SessionModel
@@ -123,7 +194,28 @@ def llm_node(state: AgentState) -> dict:
     
     local_llm = ChatOllama(base_url=settings.ollama_base_url, model=settings.llm_model, temperature=temp)
     full_content = ""
-    for chunk in local_llm.stream(state["messages"]):
+    messages_to_send = list(state["messages"])
+    skill_content = state.get("skill_content", "")
+    if skill_content:
+        from langchain_core.messages import SystemMessage
+        skill_msg = SystemMessage(content=(
+            "사용자의 질문에 답변할 때, 반드시 아래 제공된 [스킬 매뉴얼]의 내용을 기반으로만 답변해야 합니다.\n"
+            "매뉴얼에 없는 일반적인 지식(예: NTP 등)을 지어내거나 섞어서 답변하지 마세요.\n\n"
+            "[스킬 매뉴얼 시작]\n" + skill_content + "\n[스킬 매뉴얼 끝]"
+        ))
+        insert_idx = 0
+        for i, m in enumerate(messages_to_send):
+            if isinstance(m, SystemMessage):
+                insert_idx = i + 1
+            else:
+                break
+        messages_to_send.insert(insert_idx, skill_msg)
+        logger.info("[llm_chat] 스킬 지침 주입: " + state.get("selected_skill", "") + " (" + str(len(skill_content)) + "자)")
+
+    # 갱신된 컨텍스트 캐싱
+    set_last_context(session_id, messages_to_send)
+
+    for chunk in local_llm.stream(messages_to_send):
         if chunk.content:
             full_content += chunk.content
     logger.info("[llm_chat] 응답 " + str(len(full_content)) + "자")
@@ -171,7 +263,7 @@ def tool_select_node(state: AgentState) -> dict:
         )
 
     logger.info("[tool_select] LLM 툴 선택/인자 추출 요청 중...")
-    res = llm.invoke([HumanMessage(content=prompt)])
+    res = _get_llm(state).invoke([HumanMessage(content=prompt)])
     logger.info("[tool_select] LLM 원본 응답:\n" + res.content)
 
     try:
@@ -272,7 +364,7 @@ def generate_answer_node(state: AgentState) -> dict:
         )
 
     session_id = state.get("session_id")
-    temp = 0.7
+    temp = 0.1
     if session_id:
         from database import SessionLocal
         from models.models import Session as SessionModel
@@ -296,12 +388,30 @@ def generate_answer_node(state: AgentState) -> dict:
     else:
         messages_to_send = [HumanMessage(content=prompt)]
 
+    skill_content = state.get("skill_content", "")
+    if skill_content:
+        from langchain_core.messages import SystemMessage
+        skill_msg = SystemMessage(content=(
+            "사용자의 질문에 답변할 때, 반드시 아래 제공된 [스킬 매뉴얼]의 내용을 기반으로만 답변해야 합니다.\n"
+            "매뉴얼에 없는 일반적인 지식(예: NTP 등)을 지어내거나 섞어서 답변하지 마세요.\n\n"
+            "[스킬 매뉴얼 시작]\n" + skill_content + "\n[스킬 매뉴얼 끝]"
+        ))
+        insert_idx = 0
+        for i, m in enumerate(messages_to_send):
+            if isinstance(m, SystemMessage):
+                insert_idx = i + 1
+            else:
+                break
+        messages_to_send.insert(insert_idx, skill_msg)
+        logger.info("[generate] 스킬 지침 주입: " + state.get("selected_skill", "") + " (" + str(len(skill_content)) + "자)")
+
     # 최종 컨텍스트 캐싱
     set_last_context(session_id, messages_to_send)
 
     # local_llm.stream 으로 토큰 단위 스트리밍
     local_llm = ChatOllama(base_url=settings.ollama_base_url, model=settings.llm_model, temperature=temp)
     full_content = ""
+
     for chunk in local_llm.stream(messages_to_send):
         if chunk.content:
             full_content += chunk.content
@@ -419,7 +529,7 @@ def evaluate_node(state: AgentState) -> dict:
         "답변: " + answer[:300] + "\n"
         "평가:"
     )
-    res   = llm.invoke([HumanMessage(content=prompt)])
+    res   = _get_llm(state).invoke([HumanMessage(content=prompt)])
     is_ok = "no" not in res.content.lower()
     
     logger.info("[evaluate] LLM: '" + res.content.strip() + "' → " + str(is_ok))
@@ -438,7 +548,7 @@ def refine_node(state: AgentState) -> dict:
         "부족한 답변: " + answer + "\n"
         "보완된 질문:"
     )
-    res = llm.invoke([HumanMessage(content=prompt)])
+    res = _get_llm(state).invoke([HumanMessage(content=prompt)])
     logger.info("[refine] 보완: " + res.content.strip())
     return {
         "messages": [

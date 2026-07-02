@@ -39,18 +39,19 @@ def register(mcp: FastMCP):
 
         fn         = generate_line_chart if chart_type == "line" else generate_bar_chart
         chart_info = fn(labels, values, title=period + " " + query_type)
-        logger.info("[report_tool] 차트 생성 완료: " + chart_info["url"])
+        logger.info("[report_tool] 차트 생성 완료 (Base64 URL 생성됨)")
 
         return {
-            "status"    : "success",
-            "query_type": query_type,
-            "period"    : period,
-            "data"      : rows,
-            "row_count" : len(rows),
-            "chart_url" : chart_info["url"],
-            "chart_path": chart_info["path"],
-            "labels"    : labels,
-            "values"    : values,
+            "status"      : "success",
+            "query_type"  : query_type,
+            "period"      : period,
+            "data"        : rows,
+            "row_count"   : len(rows),
+            "chart_url"   : chart_info["url"],
+            "chart_base64": chart_info.get("base64", chart_info["url"]),
+            "chart_path"  : chart_info["path"],
+            "labels"      : labels,
+            "values"      : values,
         }
 
 

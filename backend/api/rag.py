@@ -24,7 +24,7 @@ async def upload_file(
     metadata: str = Form(None),
     db: Session = Depends(get_db)
 ):
-    allowed = [".pdf", ".docx", ".txt"]
+    allowed = [".pdf", ".docx", ".txt", ".md"]
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in allowed:
         raise HTTPException(status_code=400, detail="허용 파일: " + str(allowed))
@@ -157,33 +157,6 @@ def delete_document(doc_id: int, db: Session = Depends(get_db)):
     db.delete(doc)
     db.commit()
     return {"message": doc.filename + " 삭제 완료"}
-
-# ── 기본지식 문서 토글 ──
-@router.patch("/{doc_id}/knowledge", summary="기본지식 문서 설정/해제")
-def toggle_knowledge(doc_id: int, is_knowledge: bool, db: Session = Depends(get_db)):
-    doc = db.query(Document).filter(Document.id == doc_id).first()
-    if not doc:
-        raise HTTPException(status_code=404, detail="문서를 찾을 수 없습니다")
-    if is_knowledge and doc.status != "done":
-        raise HTTPException(status_code=400, detail="임베딩이 완료된 문서만 기본지식으로 설정할 수 있습니다")
-
-    doc.is_knowledge = is_knowledge
-    db.commit()
-    return {
-        "doc_id"      : doc.id,
-        "filename"    : doc.filename,
-        "is_knowledge": doc.is_knowledge
-    }
-
-# ── 기본지식 문서 목록 조회 ──
-@router.get("/knowledge/list", summary="기본지식 문서 목록")
-def list_knowledge_docs(db: Session = Depends(get_db)):
-    docs = db.query(Document).filter(
-        Document.is_knowledge == True,
-        Document.status == "done"
-    ).all()
-    return [{"id": d.id, "filename": d.filename, "chunk_count": d.chunk_count} for d in docs]
-
 
 # ── RAG 설정 조회 및 수정 ──
 @router.get("/settings", response_model=RagSettingsSchema, summary="RAG 설정 조회")

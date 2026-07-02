@@ -14,21 +14,26 @@ logger = logging.getLogger(__name__)
 
 @router.post("/", summary="채팅 (SSE 스트리밍)")
 async def chat(req: ChatRequest, db: Session = Depends(get_db)):
-    logger.info("[chat] session=" + req.session_id + " mode=" + req.mode + " msg=" + req.message[:50])
+    logger.info("[chat] session=" + req.session_id + " mode=" + req.mode + " model=" + req.model + " msg=" + req.message[:50])
     history = _load_history(db, req.session_id)
     history.append(HumanMessage(content=req.message))
     return StreamingResponse(
-        _stream_agent(db, req.session_id, req.message, history, req.mode),
+        _stream_agent(db, req.session_id, req.message, history, req.mode, req.model),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
     )
 
-async def _stream_agent(db, session_id, user_msg, history, mode):
+async def _stream_agent(db, session_id, user_msg, history, mode, model=""):
     try:
+        session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+        use_knowledge = session.use_knowledge if session else False
+
         initial_state = {
             "messages"   : history,
             "session_id" : session_id,
             "mode"       : mode,
+            "model"      : model,
+            "use_knowledge": use_knowledge,
             "retry_count": 0,
             "quality_ok" : False,
         }
@@ -79,8 +84,17 @@ async def _stream_agent(db, session_id, user_msg, history, mode):
 
             elif kind == "on_chain_end" and node_name:
                 output = event["data"].get("output", {})
-                if isinstance(output, dict) and output.get("tool_name"):
-                    current_tool = output["tool_name"]
+                if isinstance(output, dict):
+                    if output.get("tool_name"):
+                        current_tool = output["tool_name"]
+                    if output.get("final_answer") and len(output["final_answer"]) > len(final_answer):
+                        remaining = output["final_answer"][len(final_answer):]
+                        final_answer = output["final_answer"]
+                        yield (
+                            "data: " +
+                            json.dumps({"type": "token", "content": remaining}, ensure_ascii=False) +
+                            "\n\n"
+                        )
 
         _save_message(db, session_id, "user",      user_msg)
         _save_message(db, session_id, "assistant", final_answer)

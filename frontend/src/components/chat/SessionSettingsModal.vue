@@ -117,14 +117,14 @@ export default {
       localTitle: '',
       localSystemPrompt: '',
       localFewShots: [],
-      localTemperature: 0.7,
+      localTemperature: 0.1,
       saving: false
     }
   },
   created() {
     this.localTitle = this.session.title || ''
     this.localSystemPrompt = this.session.system_prompt || ''
-    this.localTemperature = this.session.temperature !== undefined ? this.session.temperature : 0.7
+    this.localTemperature = this.session.temperature !== undefined ? this.session.temperature : 0.1
     try {
       this.localFewShots = this.session.few_shots
         ? JSON.parse(this.session.few_shots)

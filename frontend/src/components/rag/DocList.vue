@@ -4,7 +4,7 @@
     <div v-if="!documents.length" class="empty">업로드된 문서가 없습니다.</div>
     <table v-else class="table">
       <thead>
-        <tr><th>파일명</th><th>청크 수</th><th>기본지식</th><th>상태</th><th>등록일</th><th>삭제</th></tr>
+        <tr><th>파일명</th><th>청크 수</th><th>메타정보</th><th>상태</th><th>등록일</th><th>삭제</th></tr>
       </thead>
       <tbody>
         <tr v-for="doc in documents" :key="doc.id">
@@ -14,17 +14,8 @@
               {{ doc.chunk_count }}
             </span>
           </td>
-          <!-- 기본지식 체크박스 -->
-          <td class="knowledge-cell">
-            <label class="toggle" :title="doc.status !== 'done' ? '임베딩 완료 후 설정 가능' : ''">
-              <input
-                type="checkbox"
-                :checked="doc.is_knowledge"
-                :disabled="doc.status !== 'done'"
-                @change="onKnowledgeChange(doc, $event)"
-              />
-              <span class="toggle-slider" />
-            </label>
+          <td class="meta-cell">
+            <button class="meta-btn" @click="openMetadata(doc)">보기</button>
           </td>
           <td><span class="badge" :class="doc.status">{{ statusLabel(doc.status) }}</span></td>
           <td>{{ formatDate(doc.created_at) }}</td>
@@ -71,18 +62,46 @@
         </div>
       </div>
     </div>
+
+    <!-- 메타데이터 팝업 -->
+    <div v-if="metaPopup.show" class="overlay" @click.self="closeMetaPopup">
+      <div class="popup meta-popup">
+        <div class="popup-header">
+          <div class="popup-title">
+            <div>
+              <div class="popup-filename">{{ metaPopup.doc.filename }} - 메타정보</div>
+            </div>
+          </div>
+          <div class="header-actions">
+            <button class="close-btn" @click="closeMetaPopup">✕</button>
+          </div>
+        </div>
+        <div class="popup-body">
+          <div v-if="!hasMetadata" class="popup-empty">등록된 메타정보가 없습니다.</div>
+          <table v-else class="meta-table">
+            <tbody>
+              <tr v-for="(value, key) in metaPopup.doc.doc_metadata" :key="key">
+                <td class="meta-key">{{ key }}</td>
+                <td class="meta-value">{{ value }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script>
-import { fetchChunks, toggleKnowledge } from '@/api/rag'
+import { fetchChunks } from '@/api/rag'
 
 export default {
   name: 'DocList',
   props: { documents: { type: Array, default: () => [] } },
   data: () => ({
     popup      : { show: false, loading: false, filename: '', chunks: [], search: '' },
-    expandedSet: {}
+    expandedSet: {},
+    metaPopup  : { show: false, doc: null }
   }),
   computed: {
     filteredChunks() {
@@ -90,23 +109,19 @@ export default {
       if (!q) return this.popup.chunks
       return this.popup.chunks.filter(c => c.text.toLowerCase().includes(q))
     },
-    allExpanded() { return this.filteredChunks.every(c => this.expandedSet[c.index]) }
+    allExpanded() { return this.filteredChunks.every(c => this.expandedSet[c.index]) },
+    hasMetadata() {
+      return this.metaPopup.doc && this.metaPopup.doc.doc_metadata && Object.keys(this.metaPopup.doc.doc_metadata).length > 0
+    }
   },
   methods: {
-    // ── 기본지식 토글 ──
-    async onKnowledgeChange(doc, event) {
-      const checked = event.target.checked
-      try {
-        await toggleKnowledge(doc.id, checked)
-        doc.is_knowledge = checked
-        const msg = checked
-          ? doc.filename + " 을(를) 기본지식으로 설정했습니다."
-          : doc.filename + " 기본지식을 해제했습니다."
-        alert(msg)
-      } catch (e) {
-        event.target.checked = !checked   // 롤백
-        alert("설정 실패: " + (e.response?.data?.detail || e.message))
-      }
+    openMetadata(doc) {
+      this.metaPopup.doc = doc
+      this.metaPopup.show = true
+    },
+    closeMetaPopup() {
+      this.metaPopup.show = false
+      this.metaPopup.doc = null
     },
     async openChunks(docId) {
       this.popup.show    = true
@@ -202,23 +217,13 @@ h3 { margin-bottom: 16px; color: #0f172a; font-weight: 600; }
 .chunk-text :deep(mark) { background: #fef08a; color: #a16207; border-radius: 3px; padding: 0 2px; }
 .slide-enter-active, .slide-leave-active { transition: max-height .25s ease, opacity .2s ease; max-height: 300px; overflow: hidden; }
 .slide-enter, .slide-leave-to { max-height: 0; opacity: 0; }
-.knowledge-cell { text-align: center; }
 
-/* 토글 스위치 */
-.toggle { position: relative; display: inline-block; width: 36px; height: 20px; cursor: pointer; }
-.toggle input { opacity: 0; width: 0; height: 0; }
-.toggle-slider {
-  position: absolute; inset: 0;
-  background: #cbd5e1; border-radius: 20px;
-  transition: background .2s;
-}
-.toggle-slider:before {
-  content: ""; position: absolute;
-  width: 14px; height: 14px; left: 3px; bottom: 3px;
-  background: #fff; border-radius: 50%;
-  transition: transform .2s;
-}
-.toggle input:checked + .toggle-slider           { background: #2563eb; }
-.toggle input:checked + .toggle-slider:before    { transform: translateX(16px); }
-.toggle input:disabled + .toggle-slider          { opacity: .4; cursor: not-allowed; }
+.meta-btn { padding: 4px 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 12px; font-weight: 500; color: #475569; cursor: pointer; transition: all .15s; }
+.meta-btn:hover { background: #f1f5f9; color: #0f172a; border-color: #cbd5e1; }
+.meta-popup { width: 600px; height: auto; max-height: 80vh; }
+.meta-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.meta-table td { padding: 12px 16px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+.meta-table tr:last-child td { border-bottom: none; }
+.meta-key { width: 140px; font-weight: 600; color: #475569; background: #f8fafc; border-right: 1px solid #e2e8f0; }
+.meta-value { color: #0f172a; white-space: pre-wrap; word-break: break-all; line-height: 1.5; }
 </style>
