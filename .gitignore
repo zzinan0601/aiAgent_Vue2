@@ -13,3 +13,4 @@ logs/
 .idea/
 *.whl
 *.gz
+SKILL.md
