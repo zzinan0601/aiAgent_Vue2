@@ -1,7 +1,7 @@
 <template>
   <div class="upload-box">
     <h3>파일 업로드</h3>
-    <p class="hint">PDF, DOCX, TXT 파일을 지원합니다.</p>
+    <p class="hint">PDF, DOCX, TXT, MD 파일을 지원합니다.</p>
     <div class="metadata-form" v-if="!uploading">
       <div class="input-row">
         <input v-model="metadata.category" type="text" placeholder="카테고리 (옵션. 예: 규정, 매뉴얼)" class="meta-input" />
